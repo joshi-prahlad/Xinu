@@ -1,0 +1,103 @@
+	Extended Xinu File System
+The earlier implementation of Xinu supported only flat files
+and only 20 files in the root directory and  thereby in the 
+file system.
+
+The change involved extending the file system to support hierarchial
+directories and arbitrarily big directories.
+
+Xinu files are identified by an index block number. And a directory
+contains a mapping from the file name to index block number.
+The underlying disk is seen as a list of 512 bytes block each of which
+can be identified by the block number.
+Disk blocks are of two kinds:
+1. Index blocks
+2. Data blocks.
+Data blocks are same as disk blocks and store the content of the file.
+Each disk block contains 7 Index blocks and each index block contains
+pointers to 16 data blocks.In a file all the index blocks are linked in
+a linked list structure.
+All the free index blocks and data blocks are linked in free_index_block
+list and free_data_block list.
+All the basic definitions can be found in include/lfilesys.h.
+
+The basic idea behind having unlimited number of files in a directory is 
+to treat directories as files ,having specific kind of data.
+Directories just contain entries for the files, mapping file
+names to first index block number of that file.
+In other words directories contain list of struct ldentry(defined in
+include/lfilesys.h). 
+As directory can contain both files and directories we need a 'type'
+field in each entry to distinguish whether it's a file or directory.
+
+The first data block (block 0) of the disk is reserved for root
+directory(struct lfdir in include/lfilesys.h) and the index block 0
+is also reserved for it.(device/lfs/lfscreate.c)
+
+Once the root directory is read it's cached as part of struct lfdata.
+There is a global mutex lf_mutex which ensures that only one process
+would be reading/writing to the root directory.
+
+struct lflcblk is the memory representation of a disk file( like FILE struct in C)
+lfltab is an array of lflcblk allocated at compile time and its size controls
+how many files can be open in the system at one point in time.
+
+A note on how device independent IO is done in Xinu.
+In contrast to Unix which treats everyting as file ,Xinu treats everything as device.
+The file config/Configuration contains declartion of device types.And LFILESYS is
+of type lfs and LFILE0,1... are instances of lfs. So we can have as many files open
+as many declarations for LFILEs. Each device is identified by a major and minor device
+number. All the devices have unique major number and different instances of same device
+type would have unique minor device numbers.(config/conf.c)
+All the read/write/open system calls(in system/read.c system/write.c etc) accepts
+a device descriptor which is an index to the device switch table (in config/conf.c)
+So given a device descriptor and an operation on that device the device switch table
+uniquely identifies the address of the function to be called which implements that 
+operation for that device.
+
+In case of file System the device minor numbers for file device type uniquely
+identifies one entry in lflcblk.
+
+
+As we are going to treat all the directories as files we need to allocate
+struct lflcblk when we read a directory in to memory.
+The trick is not to declare more devices of type file(as that would mean we can have
+more files open concurrently, but that's is not the case) in config/Configuration but
+increase the size of lfltab array  (Nlfl) by 2. 
+
+Another point to consider in case of hiearchial file system is ,as we are storing the meta data 
+of a file in the parent directory,what happens when a file is created within a directory.
+e.g. if we create  a file /a/b/c(assuming /a/b already exist otherwise it's an error
+). Then in directory 'b' an entry like 'c' <first index block number
+for c> should get added ,which means that the size of directory 'b' would be increasesd by
+sizeof(struct ldentry) so we will have to modify the entry of 'b' in directory 'a'.
+
+The last two elements of lfltab indexed by Nlfl+1 and Nlfl are used for storing the 
+inmemory directories that are parent and grandparent of the file/directory getting
+manipulated e.g. if we are creating a file /a/b/c then lfltab[Nlfl+1] should get initialized to
+/a/b and lfltab[Nlfl] gets initialized to /a/
+
+The function device/lfs/moveToDir.c does this work.
+
+The function device/lfs/lfsOpen.c opens a file if it already exists  and throws an error
+if it doesn't exist.
+If user wants to create a file then the file must not exist already and the mode string 
+should be set to "n" for new file.
+
+
+Relevant Files
+rmDir.c
+mkDir.c
+createDirEntry.c
+tokenize.c
+moveToDir.c
+isFileOpen.c
+rmFile.c
+lfsOpen.c
+lflRead.c
+lflWrite.c
+lfscreate.c
+include/lfilesys.h
+
+The Xinu page
+http://xinu.cs.purdue.edu/
