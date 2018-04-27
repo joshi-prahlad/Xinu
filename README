@@ -1,4 +1,4 @@
-	Extended Xinu File System
+	**Extended Xinu File System**
 The earlier implementation of Xinu supported only flat files
 and only 20 files in the root directory and  thereby in the 
 file system.
